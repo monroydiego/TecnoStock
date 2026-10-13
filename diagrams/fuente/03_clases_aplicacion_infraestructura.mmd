@@ -1,0 +1,403 @@
+classDiagram
+direction TB
+
+%% =====================================================
+%% CAPAS DE APLICACION E INFRAESTRUCTURA - TecnoStock
+%% Las clases marcadas <<Dominio>> se detallan en el diagrama de dominio.
+%% Convencion: el Handler de cada Command/Query es el metodo del servicio.
+%% =====================================================
+
+%% ---------------- APLICACION: servicios (lado de escritura) ----------------
+class ServicioDeApartados {
+  <<Application Service>>
+  +ApartarProducto(cmd) Resultado
+  +ConvertirApartadoEnVenta(cmd) Resultado
+}
+
+class ServicioDeVentas {
+  <<Application Service>>
+  +RegistrarVenta(cmd) Resultado
+}
+
+class ServicioDeDevoluciones {
+  <<Application Service>>
+  +SolicitarDevolucion(cmd) Resultado
+  +AutorizarDevolucionExcepcional(cmd) Resultado
+}
+
+%% ---------------- APLICACION: servicios (lado de lectura) ----------------
+class ConsultasDeInventario {
+  <<Query Service>>
+  +ConsultarDisponibilidadEnSucursal(query) DisponibilidadDeProductoDto
+  +ConsultarDisponibilidadEnOtrasSucursales(query) List~DisponibilidadPorSucursalDto~
+}
+
+class ConsultasDeDevoluciones {
+  <<Query Service>>
+  +ConsultarEstadoDeDevolucion(query) EstadoDeDevolucionDto
+  +ConsultarCriterioDeDevolucionVigente(query) CriterioDeDevolucionDto
+}
+
+%% ---------------- APLICACION: Commands ----------------
+class ApartarProductoCommand {
+  <<Command>>
+  productoId
+  sucursalId
+  clienteId
+  anticipo
+}
+
+class ConvertirApartadoEnVentaCommand {
+  <<Command>>
+  folioDeApartado
+  pagoDelSaldo
+  serieCapturada
+}
+
+class RegistrarVentaCommand {
+  <<Command>>
+  sucursalId
+  lineas
+  pagos
+}
+
+class SolicitarDevolucionCommand {
+  <<Command>>
+  folioDeVenta
+  productoId
+  serieCapturada
+  motivo
+}
+
+class AutorizarDevolucionExcepcionalCommand {
+  <<Command>>
+  folioDeDevolucion
+  autoriza
+  motivo
+}
+
+%% ---------------- APLICACION: Queries y DTO de lectura ----------------
+class ConsultarDisponibilidadEnSucursalQuery {
+  <<Query>>
+  productoId
+  sucursalId
+}
+
+class ConsultarDisponibilidadEnOtrasSucursalesQuery {
+  <<Query>>
+  productoId
+  sucursalActual
+}
+
+class ConsultarEstadoDeDevolucionQuery {
+  <<Query>>
+  folioDeDevolucion
+}
+
+class ConsultarCriterioDeDevolucionVigenteQuery {
+  <<Query>>
+}
+
+class DisponibilidadDeProductoDto {
+  <<DTO de lectura>>
+  producto
+  sucursal
+  cantidadDisponible
+}
+
+class DisponibilidadPorSucursalDto {
+  <<DTO de lectura>>
+  sucursal
+  cantidadDisponible
+}
+
+class EstadoDeDevolucionDto {
+  <<DTO de lectura>>
+  folio
+  estado
+  motivo
+}
+
+class CriterioDeDevolucionDto {
+  <<DTO de lectura>>
+  condiciones
+  plazoPorCategoria
+}
+
+class ConfirmacionDeApartadoDto {
+  <<DTO de respuesta>>
+  folio
+  fechaLimite
+  saldoPendiente
+}
+
+%% ---------------- APLICACION: resultado y rechazos ----------------
+class Resultado {
+  <<Application>>
+  +bool exitoso
+  +Object valor
+  +Rechazo rechazo
+  +Exito(valor)$ Resultado
+  +Rechazar(rechazo)$ Resultado
+}
+
+class Rechazo {
+  <<Application>>
+  +MotivoDeRechazo motivo
+  +String mensajeDeNegocio
+  +AlternativaSugerida alternativa
+}
+
+class AlternativaSugerida {
+  <<Enumeration>>
+  Ninguna
+  ConsultarOtrasSucursales
+  ElegirOtraUnidad
+  CapturarSerie
+  IniciarVentaNueva
+  DerivarASupervisor
+}
+
+class TraductorDeRechazos {
+  <<Application>>
+  +Traducir(ReglaDeNegocioViolada) Rechazo
+}
+
+%% ---------------- APLICACION: puertos ----------------
+class IUnidadDeTrabajo {
+  <<Port>>
+  +Iniciar() void
+  +Confirmar() void
+  +Descartar() void
+}
+
+class IReloj {
+  <<Port>>
+  +Ahora() DateTime
+}
+
+class IGeneradorDeFolios {
+  <<Port>>
+  +Siguiente(tipoDeOperacion) Folio
+}
+
+class IContextoDeUsuario {
+  <<Port>>
+  +OperadorActual() Operador
+}
+
+class IPublicadorDeEventos {
+  <<Port>>
+  +Publicar(eventos) void
+}
+
+class IEmisorDeComprobantes {
+  <<Port>>
+  +Emitir(operacion) void
+}
+
+class INotificador {
+  <<Port>>
+  +Avisar(destinatario, mensaje) void
+}
+
+class ILectorDeInventario {
+  <<Read Port>>
+  +DisponibilidadEnSucursal(productoId, sucursalId) DisponibilidadDeProductoDto
+  +DisponibilidadEnOtrasSucursales(productoId, sucursalActual) List~DisponibilidadPorSucursalDto~
+}
+
+class ILectorDeDevoluciones {
+  <<Read Port>>
+  +EstadoDeDevolucion(folio) EstadoDeDevolucionDto
+  +CriterioVigente() CriterioDeDevolucionDto
+}
+
+%% ---------------- APLICACION: manejadores de eventos ----------------
+class ManejadorDeComprobantes {
+  <<Event Handler>>
+  +AlCrearseApartado(evento) void
+  +AlCerrarseVenta(evento) void
+  +AlAceptarseDevolucion(evento) void
+}
+
+class ManejadorDeReingresoDeUnidades {
+  <<Event Handler>>
+  +AlAceptarseDevolucion(evento) void
+}
+
+class ManejadorDeAvisos {
+  <<Event Handler>>
+  +AlDerivarseDevolucion(evento) void
+  +AlVencerseApartado(evento) void
+}
+
+%% ---------------- DOMINIO (colapsado, ver diagrama de dominio) ----------------
+class IRepositorioDeApartados {
+  <<Dominio>>
+}
+class IRepositorioDeUnidades {
+  <<Dominio>>
+}
+class IRepositorioDeVentas {
+  <<Dominio>>
+}
+class IRepositorioDeDevoluciones {
+  <<Dominio>>
+}
+class IRepositorioDePoliticas {
+  <<Dominio>>
+}
+class IRepositorioDeProductos {
+  <<Dominio>>
+}
+class ConversionDeApartado {
+  <<Dominio>>
+}
+class ReglaDeNegocioViolada {
+  <<Dominio>>
+}
+class EventoDeDominio {
+  <<Dominio>>
+}
+
+%% ---------------- INFRAESTRUCTURA (sin base de datos por ahora) ----------------
+class UnidadDeTrabajoEnMemoria {
+  <<Infraestructura>>
+}
+class PublicadorDeEventosEnMemoria {
+  <<Infraestructura>>
+}
+class RepositorioDeApartadosEnMemoria {
+  <<Infraestructura>>
+}
+class RepositorioDeUnidadesEnMemoria {
+  <<Infraestructura>>
+}
+class RepositorioDeVentasEnMemoria {
+  <<Infraestructura>>
+}
+class RepositorioDeDevolucionesEnMemoria {
+  <<Infraestructura>>
+}
+class RepositorioDePoliticasEnMemoria {
+  <<Infraestructura>>
+}
+class RepositorioDeProductosEnMemoria {
+  <<Infraestructura>>
+}
+class LectorDeInventarioEnMemoria {
+  <<Infraestructura>>
+}
+class LectorDeDevolucionesEnMemoria {
+  <<Infraestructura>>
+}
+class RelojDelSistema {
+  <<Infraestructura>>
+}
+class GeneradorDeFolios {
+  <<Infraestructura>>
+}
+class ContextoDeUsuarioDeSesion {
+  <<Infraestructura>>
+}
+class EmisorDeComprobantesBasico {
+  <<Infraestructura>>
+}
+class NotificadorDeAvisos {
+  <<Infraestructura>>
+}
+
+%% ---------- Servicios de escritura -> Commands ----------
+ServicioDeApartados ..> ApartarProductoCommand
+ServicioDeApartados ..> ConvertirApartadoEnVentaCommand
+ServicioDeVentas ..> RegistrarVentaCommand
+ServicioDeDevoluciones ..> SolicitarDevolucionCommand
+ServicioDeDevoluciones ..> AutorizarDevolucionExcepcionalCommand
+ServicioDeApartados ..> ConfirmacionDeApartadoDto
+ServicioDeApartados ..> Resultado
+ServicioDeVentas ..> Resultado
+ServicioDeDevoluciones ..> Resultado
+Resultado --> Rechazo
+Rechazo --> AlternativaSugerida
+TraductorDeRechazos ..> ReglaDeNegocioViolada
+TraductorDeRechazos ..> Rechazo
+
+%% ---------- Servicios de escritura -> abstracciones ----------
+ServicioDeApartados ..> IRepositorioDeApartados
+ServicioDeApartados ..> IRepositorioDeUnidades
+ServicioDeApartados ..> IRepositorioDeProductos
+ServicioDeApartados ..> IRepositorioDePoliticas
+ServicioDeApartados ..> ConversionDeApartado
+ServicioDeVentas ..> IRepositorioDeVentas
+ServicioDeVentas ..> IRepositorioDeUnidades
+ServicioDeVentas ..> IRepositorioDeProductos
+ServicioDeVentas ..> IRepositorioDePoliticas
+ServicioDeDevoluciones ..> IRepositorioDeVentas
+ServicioDeDevoluciones ..> IRepositorioDeDevoluciones
+ServicioDeDevoluciones ..> IRepositorioDeProductos
+ServicioDeDevoluciones ..> IRepositorioDePoliticas
+ServicioDeApartados ..> IUnidadDeTrabajo
+ServicioDeVentas ..> IUnidadDeTrabajo
+ServicioDeDevoluciones ..> IUnidadDeTrabajo
+ServicioDeApartados ..> IReloj
+ServicioDeVentas ..> IReloj
+ServicioDeDevoluciones ..> IReloj
+ServicioDeApartados ..> IGeneradorDeFolios
+ServicioDeVentas ..> IGeneradorDeFolios
+ServicioDeDevoluciones ..> IGeneradorDeFolios
+ServicioDeApartados ..> IContextoDeUsuario
+ServicioDeVentas ..> IContextoDeUsuario
+ServicioDeDevoluciones ..> IContextoDeUsuario
+ServicioDeApartados ..> TraductorDeRechazos
+ServicioDeVentas ..> TraductorDeRechazos
+ServicioDeDevoluciones ..> TraductorDeRechazos
+
+%% ---------- Lado de lectura (CQRS basico) ----------
+ConsultasDeInventario ..> ConsultarDisponibilidadEnSucursalQuery
+ConsultasDeInventario ..> ConsultarDisponibilidadEnOtrasSucursalesQuery
+ConsultasDeDevoluciones ..> ConsultarEstadoDeDevolucionQuery
+ConsultasDeDevoluciones ..> ConsultarCriterioDeDevolucionVigenteQuery
+ConsultasDeInventario ..> ILectorDeInventario
+ConsultasDeDevoluciones ..> ILectorDeDevoluciones
+ILectorDeInventario ..> DisponibilidadDeProductoDto
+ILectorDeInventario ..> DisponibilidadPorSucursalDto
+ILectorDeDevoluciones ..> EstadoDeDevolucionDto
+ILectorDeDevoluciones ..> CriterioDeDevolucionDto
+
+%% ---------- Manejadores de eventos ----------
+IPublicadorDeEventos ..> EventoDeDominio
+IPublicadorDeEventos ..> ManejadorDeComprobantes : despacha
+IPublicadorDeEventos ..> ManejadorDeReingresoDeUnidades : despacha
+IPublicadorDeEventos ..> ManejadorDeAvisos : despacha
+ManejadorDeComprobantes ..> IEmisorDeComprobantes
+ManejadorDeReingresoDeUnidades ..> IRepositorioDeUnidades
+ManejadorDeReingresoDeUnidades ..> IUnidadDeTrabajo
+ManejadorDeAvisos ..> INotificador
+
+%% ---------- Infraestructura implementa abstracciones ----------
+UnidadDeTrabajoEnMemoria ..|> IUnidadDeTrabajo
+UnidadDeTrabajoEnMemoria ..> IPublicadorDeEventos : tras confirmar
+PublicadorDeEventosEnMemoria ..|> IPublicadorDeEventos
+RepositorioDeApartadosEnMemoria ..|> IRepositorioDeApartados
+RepositorioDeUnidadesEnMemoria ..|> IRepositorioDeUnidades
+RepositorioDeVentasEnMemoria ..|> IRepositorioDeVentas
+RepositorioDeDevolucionesEnMemoria ..|> IRepositorioDeDevoluciones
+RepositorioDePoliticasEnMemoria ..|> IRepositorioDePoliticas
+RepositorioDeProductosEnMemoria ..|> IRepositorioDeProductos
+LectorDeInventarioEnMemoria ..|> ILectorDeInventario
+LectorDeDevolucionesEnMemoria ..|> ILectorDeDevoluciones
+RelojDelSistema ..|> IReloj
+GeneradorDeFolios ..|> IGeneradorDeFolios
+ContextoDeUsuarioDeSesion ..|> IContextoDeUsuario
+EmisorDeComprobantesBasico ..|> IEmisorDeComprobantes
+NotificadorDeAvisos ..|> INotificador
+
+%% ---------- Estilos por capa (paleta propia del documento) ----------
+classDef dominio fill:#F3E7D3,stroke:#6B4423,color:#1E1E1E
+classDef aplicacion fill:#DDE6DD,stroke:#2E4A3A,color:#1E1E1E
+classDef infra fill:#E1E3EA,stroke:#3A3F58,color:#1E1E1E
+
+cssClass "IRepositorioDeApartados,IRepositorioDeUnidades,IRepositorioDeVentas,IRepositorioDeDevoluciones,IRepositorioDePoliticas,IRepositorioDeProductos,ConversionDeApartado,ReglaDeNegocioViolada,EventoDeDominio" dominio
+cssClass "ServicioDeApartados,ServicioDeVentas,ServicioDeDevoluciones,ConsultasDeInventario,ConsultasDeDevoluciones,ApartarProductoCommand,ConvertirApartadoEnVentaCommand,RegistrarVentaCommand,SolicitarDevolucionCommand,AutorizarDevolucionExcepcionalCommand,ConsultarDisponibilidadEnSucursalQuery,ConsultarDisponibilidadEnOtrasSucursalesQuery,ConsultarEstadoDeDevolucionQuery,ConsultarCriterioDeDevolucionVigenteQuery,DisponibilidadDeProductoDto,DisponibilidadPorSucursalDto,EstadoDeDevolucionDto,CriterioDeDevolucionDto,ConfirmacionDeApartadoDto,Resultado,Rechazo,AlternativaSugerida,TraductorDeRechazos,IUnidadDeTrabajo,IReloj,IGeneradorDeFolios,IContextoDeUsuario,IPublicadorDeEventos,IEmisorDeComprobantes,INotificador,ILectorDeInventario,ILectorDeDevoluciones,ManejadorDeComprobantes,ManejadorDeReingresoDeUnidades,ManejadorDeAvisos" aplicacion
+cssClass "UnidadDeTrabajoEnMemoria,PublicadorDeEventosEnMemoria,RepositorioDeApartadosEnMemoria,RepositorioDeUnidadesEnMemoria,RepositorioDeVentasEnMemoria,RepositorioDeDevolucionesEnMemoria,RepositorioDePoliticasEnMemoria,RepositorioDeProductosEnMemoria,LectorDeInventarioEnMemoria,LectorDeDevolucionesEnMemoria,RelojDelSistema,GeneradorDeFolios,ContextoDeUsuarioDeSesion,EmisorDeComprobantesBasico,NotificadorDeAvisos" infra

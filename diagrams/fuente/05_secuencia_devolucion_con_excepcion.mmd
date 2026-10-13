@@ -1,0 +1,91 @@
+sequenceDiagram
+    actor Cajero
+    actor Supervisor
+    participant SD as ServicioDeDevoluciones
+    participant UoW as IUnidadDeTrabajo
+    participant RV as IRepositorioDeVentas
+    participant RP as IRepositorioDeProductos
+    participant RPol as IRepositorioDePoliticas
+    participant RD as IRepositorioDeDevoluciones
+    participant CRI as CriterioDeDevolucion
+    participant DEV as Devolucion
+    participant DSU as DecisionDeSupervisor
+    participant PUB as IPublicadorDeEventos
+    participant MA as ManejadorDeAvisos
+    participant MR as ManejadorDeReingresoDeUnidades
+    participant UNI as UnidadInventario
+
+    Note over Cajero,UNI: PARTE 1 - CU-04 SolicitarDevolucion (flujo con regla y rechazo estandar)
+    Cajero->>SD: 1. SolicitarDevolucion(folioDeVenta, productoId, serieCapturada, motivo)
+    Note over SD: Obtiene el Operador (IContextoDeUsuario), la hora (IReloj) y el folio de devolucion (IGeneradorDeFolios)
+    SD->>UoW: 2. Iniciar()
+    SD->>RV: 3. ObtenerPorFolio(folioDeVenta)
+
+    alt Comprobante inexistente (RN-DEV-001) - rechazo definitivo
+        RV-->>SD: lanza ReglaDeNegocioViolada ComprobanteNoValido
+        SD->>UoW: Descartar()
+        SD-->>Cajero: Rechazo ComprobanteNoValido (no se crea devolucion)
+    else Comprobante encontrado
+        RV-->>SD: Venta
+        SD->>RP: 4. Obtener(productoId)
+        RP-->>SD: Producto
+        SD->>RPol: 5. ObtenerPoliticaVigente()
+        RPol-->>SD: PoliticaComercial
+        SD->>CRI: 6. Evaluar(venta, linea, producto, ahora)
+        CRI-->>SD: DictamenDeDevolucion
+        SD->>DEV: 7. Solicitar(folio, venta, productoId, serie, motivo, dictamen, cajero, ahora)
+
+        alt El dictamen cumple el criterio estandar (RN-DEV-001 y RN-DEV-002)
+            DEV-->>SD: Devolucion en estado Aceptada (registra DevolucionAceptada)
+        else El dictamen incumple, por ejemplo fuera de plazo (RN-DEV-002)
+            DEV-->>SD: Devolucion en estado EnRevision (registra DevolucionDerivadaASupervisor)
+        end
+
+        SD->>RD: 8. Agregar(devolucion)
+        SD->>UoW: 9. Confirmar()
+        UoW->>PUB: Publicar(eventos de Devolucion)
+
+        alt Devolucion aceptada
+            PUB->>MR: DevolucionAceptada
+            MR->>UNI: RegistrarDevolucion(folioDeDevolucion)
+            Note right of UNI: Transaccion propia. Estado: Devuelta
+        else Devolucion en revision
+            PUB->>MA: DevolucionDerivadaASupervisor
+            MA-->>Supervisor: Aviso de devolucion pendiente (canal por validar)
+        end
+        SD-->>Cajero: 10. Resultado con folio y estado (Aceptada o EnRevision)
+    end
+
+    Note over Cajero,UNI: PARTE 2 - CU-05 AutorizarDevolucionExcepcional (caso distinto tras el rechazo estandar)
+    Supervisor->>SD: 11. AutorizarDevolucionExcepcional(folioDeDevolucion, autoriza, motivo)
+    SD->>UoW: 12. Iniciar()
+    SD->>RD: 13. Obtener(folioDeDevolucion)
+    RD-->>SD: Devolucion en estado EnRevision
+    SD->>DSU: 14. Registrar(operador, autoriza, motivo, ahora)
+    Note right of DSU: Valida que el Rol sea Supervisor (RN-SUP-002)
+
+    alt El operador no es Supervisor
+        DSU-->>SD: lanza ReglaDeNegocioViolada SoloSupervisorAutoriza
+        SD->>UoW: Descartar()
+        SD-->>Supervisor: Rechazo SoloSupervisorAutoriza
+    else Decision registrada
+        DSU-->>SD: DecisionDeSupervisor
+        SD->>DEV: 15. Resolver(decision)
+        Note right of DEV: Solo desde EnRevision. Si no, TransicionDeEstadoInvalida
+
+        alt El Supervisor autoriza
+            DEV-->>SD: estado Aceptada (registra DevolucionAceptada)
+        else El Supervisor deniega
+            DEV-->>SD: estado Rechazada (registra DevolucionRechazada)
+        end
+
+        SD->>RD: 16. Guardar(devolucion)
+        SD->>UoW: 17. Confirmar()
+        UoW->>PUB: Publicar(eventos de Devolucion)
+
+        opt Si la devolucion quedo Aceptada
+            PUB->>MR: DevolucionAceptada
+            MR->>UNI: RegistrarDevolucion(folioDeDevolucion)
+        end
+        SD-->>Supervisor: 18. Resultado con el estado final y la autorizacion registrada
+    end

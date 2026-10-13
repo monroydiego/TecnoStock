@@ -1,0 +1,68 @@
+sequenceDiagram
+    actor Cajero
+    participant SA as ServicioDeApartados
+    participant UoW as IUnidadDeTrabajo
+    participant RA as IRepositorioDeApartados
+    participant RU as IRepositorioDeUnidades
+    participant RP as IRepositorioDeProductos
+    participant RPol as IRepositorioDePoliticas
+    participant RV as IRepositorioDeVentas
+    participant CA as ConversionDeApartado
+    participant APT as Apartado
+    participant UNI as UnidadInventario
+    participant VEN as Venta
+    participant PUB as IPublicadorDeEventos
+    participant MC as ManejadorDeComprobantes
+    participant MA as ManejadorDeAvisos
+
+    Cajero->>SA: 1. ConvertirApartadoEnVenta(folioDeApartado, pagoDelSaldo, serieCapturada)
+    Note over SA: Obtiene el Operador (IContextoDeUsuario), la hora (IReloj) y el folio de venta (IGeneradorDeFolios)
+    SA->>UoW: 2. Iniciar()
+    SA->>RA: 3. Obtener(folioDeApartado)
+    RA-->>SA: Apartado
+    SA->>RU: 4. Obtener(apartado.UnidadId)
+    RU-->>SA: UnidadInventario
+    SA->>RP: 5. Obtener(unidad.ProductoId)
+    RP-->>SA: Producto
+    SA->>RPol: 6. ObtenerPoliticaVigente()
+    RPol-->>SA: PoliticaComercial
+    SA->>CA: 7. Convertir(apartado, unidad, producto, pagoSaldo, serieCapturada, folioVenta, cajero, politica, ahora)
+    CA->>APT: 8. EstaVigente(ahora)
+    APT-->>CA: verdadero o falso
+
+    alt 9a. Apartado vigente (flujo principal)
+        CA->>APT: Liquidar(pagoSaldo, politica, ahora)
+        Note right of APT: Valida metodo de pago autorizado (RN-VTA-002) y saldo cubierto. Estado: Convertido
+        CA->>UNI: VenderDesdeApartado(folioApartado, serieCapturada)
+        Note right of UNI: Valida que la unidad este apartada por ese folio y que la serie coincida (RN-APT-003, RN-VTA-001). Estado: Vendida
+        CA->>VEN: CerrarDesdeApartado(folioVenta, apartado, unidad, producto, pagoSaldo, cajero, ahora)
+        VEN-->>CA: Venta (registra el evento VentaCerrada)
+        CA-->>SA: ResultadoDeConversion exitosa con la venta
+        SA->>RV: 10. Agregar(venta)
+        SA->>RA: Guardar(apartado)
+        SA->>RU: Guardar(unidad)
+        SA->>UoW: 11. Confirmar()
+        UoW->>PUB: Publicar(eventos de Venta)
+        PUB->>MC: VentaCerrada
+        Note right of MC: Emite el comprobante con folio unico (US12)
+        SA-->>Cajero: 12. Resultado exitoso con el comprobante de venta
+    else 9b. Apartado vencido (rechazo con efecto, RN-APT-002)
+        CA->>APT: Vencer(ahora)
+        CA->>UNI: LiberarApartado(folioApartado)
+        Note right of UNI: La unidad vuelve a Disponible
+        CA-->>SA: ResultadoDeConversion rechazada, motivo ApartadoVencido
+        SA->>RA: Guardar(apartado)
+        SA->>RU: Guardar(unidad)
+        SA->>UoW: 10. Confirmar()
+        Note over SA,UoW: El vencimiento se persiste aunque la venta se rechace
+        UoW->>PUB: Publicar(ApartadoVencido)
+        PUB->>MA: ApartadoVencido
+        Note right of MA: Avisa al vendedor o cliente (canal por validar, US20)
+        SA-->>Cajero: 11. Rechazo ApartadoVencido, alternativa: IniciarVentaNueva
+    else 9c. Pago invalido o saldo insuficiente (ReglaDeNegocioViolada)
+        APT-->>CA: lanza ReglaDeNegocioViolada
+        CA-->>SA: propaga la excepcion
+        SA->>UoW: 10. Descartar()
+        Note over SA,UoW: No se guarda nada. El apartado sigue vigente
+        SA-->>Cajero: 11. Rechazo SaldoInsuficiente o MetodoDePagoNoAutorizado
+    end

@@ -1,0 +1,106 @@
+flowchart LR
+  classDef raiz fill:#F3E7D3,stroke:#6B4423,stroke-width:2px,color:#1E1E1E
+  classDef entidad fill:#F8F1E4,stroke:#6B4423,color:#1E1E1E
+  classDef vo fill:#FFFFFF,stroke:#6E6E6E,stroke-dasharray:4 3,color:#1E1E1E
+  classDef evento fill:#EBDADD,stroke:#7A2E3F,color:#1E1E1E
+  classDef servicio fill:#DDE6DD,stroke:#2E4A3A,color:#1E1E1E
+  classDef politica fill:#ECE9DC,stroke:#5A5532,color:#1E1E1E
+  classDef externo fill:#F2F2F2,stroke:#9A9A9A,color:#555555
+  classDef interesado fill:#E1E3EA,stroke:#3A3F58,color:#1E1E1E
+
+  subgraph A1["Aggregate: Apartado"]
+    APT["Apartado<br/>«Aggregate Root»"]:::raiz
+    ANT["Anticipo (PagoRecibido)<br/>«Value Object»"]:::vo
+    VIG["VigenciaDeApartado<br/>«Value Object»"]:::vo
+    APT --- ANT
+    APT --- VIG
+  end
+
+  subgraph A2["Aggregate: UnidadInventario"]
+    UNI["UnidadInventario<br/>«Aggregate Root»"]:::raiz
+    SER["NumeroDeSerie<br/>«Value Object»"]:::vo
+    EUN["EstadoDeUnidad<br/>«Value Object»"]:::vo
+    UNI --- SER
+    UNI --- EUN
+  end
+
+  subgraph A3["Aggregate: Venta"]
+    VEN["Venta<br/>«Aggregate Root»"]:::raiz
+    LIN["LineaDeVenta<br/>«Entity»"]:::entidad
+    PAG["PagoRecibido<br/>«Value Object»"]:::vo
+    VEN --- LIN
+    VEN --- PAG
+  end
+
+  subgraph A4["Aggregate: Devolucion"]
+    DEV["Devolucion<br/>«Aggregate Root»"]:::raiz
+    MOT["MotivoDeDevolucion<br/>«Value Object»"]:::vo
+    DIC["DictamenDeDevolucion<br/>«Value Object»"]:::vo
+    DSU["DecisionDeSupervisor<br/>«Value Object»"]:::vo
+    DEV --- MOT
+    DEV --- DIC
+    DEV --- DSU
+  end
+
+  subgraph A5["Aggregate: PoliticaComercial"]
+    POL["PoliticaComercial<br/>«Aggregate Root»"]:::raiz
+    CRI["CriterioDeDevolucion<br/>«Policy»"]:::politica
+    REG["ReglaDeDevolucion<br/>«Policy»"]:::politica
+    POL --- CRI
+    CRI --- REG
+  end
+
+  subgraph A6["Catálogo (referencia)"]
+    PRO["Producto<br/>«Aggregate Root»"]:::raiz
+  end
+
+  CON["ConversionDeApartado<br/>«Domain Service»"]:::servicio
+
+  SUC(("SucursalId")):::externo
+  CLI(("ClienteId")):::externo
+  OPE["Operador (Rol)<br/>«Value Object»"]:::externo
+
+  E1(["ApartadoCreado<br/>«Domain Event»"]):::evento
+  E2(["ApartadoVencido<br/>«Domain Event»"]):::evento
+  E3(["VentaCerrada<br/>«Domain Event»"]):::evento
+  E4(["DevolucionDerivadaASupervisor<br/>«Domain Event»"]):::evento
+  E5(["DevolucionAceptada<br/>«Domain Event»"]):::evento
+  E6(["DevolucionRechazada<br/>«Domain Event»"]):::evento
+
+  subgraph INT["Interesados en los eventos (capa de aplicación)"]
+    H1["ManejadorDeComprobantes<br/>(US12)"]:::interesado
+    H2["ManejadorDeReingresoDeUnidades<br/>(BR-003)"]:::interesado
+    H3["ManejadorDeAvisos<br/>(US13, US20)"]:::interesado
+  end
+
+  APT -.->|"reserva (UnidadId)"| UNI
+  VEN -.->|"vende (UnidadId y serie)"| UNI
+  VEN -.->|"origen opcional (Folio)"| APT
+  DEV -.->|"devuelve línea de (Folio de venta)"| VEN
+  LIN -.->|"ProductoId"| PRO
+  UNI -.->|"ProductoId"| PRO
+  APT -.-> CLI
+  UNI -.-> SUC
+  DSU -.-> OPE
+
+  POL -->|"anticipo mínimo y plazo"| APT
+  POL -->|"métodos de pago autorizados"| VEN
+  POL -->|"criterio vigente"| DEV
+
+  CON ==>|"coordina"| APT
+  CON ==>|"coordina"| UNI
+  CON ==>|"crea"| VEN
+
+  APT --> E1
+  APT --> E2
+  VEN --> E3
+  DEV --> E4
+  DEV --> E5
+  DEV --> E6
+
+  E1 --> H1
+  E3 --> H1
+  E5 --> H1
+  E5 --> H2
+  E4 --> H3
+  E2 --> H3

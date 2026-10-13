@@ -1,0 +1,448 @@
+classDiagram
+direction TB
+
+%% =====================================================
+%% CAPA DE DOMINIO - TecnoStock
+%% Los identificadores ProductoId, UnidadId, SucursalId y ClienteId
+%% son Value Objects tipados y se omiten como cajas.
+%% =====================================================
+
+class RaizDeAgregado {
+  <<Abstract>>
+  #int version
+  #List~EventoDeDominio~ eventosPendientes
+  #Registrar(evento) void
+  +ExtraerEventos() List~EventoDeDominio~
+}
+
+class Apartado {
+  <<Aggregate Root>>
+  -Folio folio
+  -ClienteId clienteId
+  -SucursalId sucursalId
+  -UnidadId unidadId
+  -Dinero precioAcordado
+  -PagoRecibido anticipo
+  -VigenciaDeApartado vigencia
+  -EstadoDeApartado estado
+  +Crear(folio, clienteId, unidad, precio, anticipo, politica, ahora)$ Apartado
+  +EstaVigente(ahora) bool
+  +SaldoPendiente() Dinero
+  +Liquidar(pagoSaldo, politica, ahora) void
+  +Vencer(ahora) void
+  +Cancelar(decision) void
+}
+
+class UnidadInventario {
+  <<Aggregate Root>>
+  -UnidadId id
+  -ProductoId productoId
+  -SucursalId sucursalActual
+  -NumeroDeSerie serie
+  -EstadoDeUnidad estado
+  -Folio folioDeApartadoVigente
+  +Registrar(id, productoId, sucursal, serie)$ UnidadInventario
+  +Apartar(folioApartado, sucursal) void
+  +LiberarApartado(folioApartado) void
+  +Vender(folioVenta, sucursal) void
+  +VenderDesdeApartado(folioApartado, serieCapturada) void
+  +RegistrarDevolucion(folioDevolucion) void
+}
+
+class Venta {
+  <<Aggregate Root>>
+  -Folio folio
+  -SucursalId sucursalId
+  -Operador cajero
+  -List~LineaDeVenta~ lineas
+  -List~PagoRecibido~ pagos
+  -Folio folioDeApartadoOrigen
+  -DateTime fechaDeCierre
+  +Cerrar(folio, sucursal, cajero, lineas, pagos, politica, ahora)$ Venta
+  +CerrarDesdeApartado(folio, apartado, unidad, producto, pagoSaldo, cajero, ahora)$ Venta
+  +Total() Dinero
+  +ObtenerLinea(productoId, serie) LineaDeVenta
+}
+
+class LineaDeVenta {
+  <<Entity>>
+  -ProductoId productoId
+  -UnidadId unidadId
+  -NumeroDeSerie serie
+  -Dinero precioUnitario
+  +Crear(producto, unidad, serieCapturada, precio)$ LineaDeVenta
+}
+
+class Devolucion {
+  <<Aggregate Root>>
+  -Folio folio
+  -Folio folioDeVenta
+  -UnidadId unidadDevuelta
+  -MotivoDeDevolucion motivo
+  -DictamenDeDevolucion dictamen
+  -DecisionDeSupervisor decision
+  -EstadoDeDevolucion estado
+  +Solicitar(folio, venta, productoId, serie, motivo, dictamen, operador, ahora)$ Devolucion
+  +Resolver(decision) void
+}
+
+class PoliticaComercial {
+  <<Aggregate Root>>
+  -decimal porcentajeDeAnticipoMinimo
+  -int plazoMaximoDeApartadoEnDias
+  -List~MetodoDePago~ metodosAutorizados
+  -CriterioDeDevolucion criterioDeDevolucion
+  +AnticipoMinimoSobre(precio) Dinero
+  +NuevaVigenciaDesde(ahora) VigenciaDeApartado
+  +ValidarMetodoDePago(metodo) void
+  +CriterioDeDevolucionVigente() CriterioDeDevolucion
+}
+
+class Producto {
+  <<Aggregate Root>>
+  -ProductoId id
+  -String sku
+  -String nombre
+  -CategoriaDeProducto categoria
+  -bool requiereSerie
+  -Dinero precioDeLista
+}
+
+class ConversionDeApartado {
+  <<Domain Service>>
+  +Convertir(apartado, unidad, producto, pagoSaldo, serieCapturada, folioVenta, cajero, politica, ahora) ResultadoDeConversion
+}
+
+class ResultadoDeConversion {
+  <<Value Object>>
+  -Venta venta
+  -MotivoDeRechazo motivo
+  +Exitosa(venta)$ ResultadoDeConversion
+  +Rechazada(motivo)$ ResultadoDeConversion
+  +EsExitosa() bool
+}
+
+class CriterioDeDevolucion {
+  <<Policy>>
+  -List~ReglaDeDevolucion~ reglas
+  +Evaluar(venta, linea, producto, ahora) DictamenDeDevolucion
+}
+
+class ReglaDeDevolucion {
+  <<Interface>>
+  +Evaluar(venta, linea, producto, ahora) ResultadoDeRegla
+}
+
+class ReglaDeComprobanteVigente {
+  <<Policy>>
+  +Evaluar(venta, linea, producto, ahora) ResultadoDeRegla
+}
+
+class ReglaDePlazoPorCategoria {
+  <<Policy>>
+  -Map plazoEnDiasPorCategoria
+  +Evaluar(venta, linea, producto, ahora) ResultadoDeRegla
+}
+
+class ResultadoDeRegla {
+  <<Value Object>>
+  -bool cumple
+  -String razon
+}
+
+class DictamenDeDevolucion {
+  <<Value Object>>
+  -List~ResultadoDeRegla~ resultados
+  +Cumple() bool
+  +Incumplimientos() List~String~
+}
+
+class DecisionDeSupervisor {
+  <<Value Object>>
+  -Operador supervisor
+  -bool autoriza
+  -String motivo
+  -DateTime fecha
+  +Registrar(operador, autoriza, motivo, ahora)$ DecisionDeSupervisor
+}
+
+class MotivoDeDevolucion {
+  <<Value Object>>
+  -String causal
+  -String detalle
+}
+
+class PagoRecibido {
+  <<Value Object>>
+  -MetodoDePago metodo
+  -Dinero monto
+}
+
+class VigenciaDeApartado {
+  <<Value Object>>
+  -DateTime desde
+  -DateTime hasta
+  +HaVencido(ahora) bool
+}
+
+class Dinero {
+  <<Value Object>>
+  -decimal monto
+  -String moneda
+  +Sumar(otro) Dinero
+  +Restar(otro) Dinero
+  +EsMenorQue(otro) bool
+  +Porcentaje(valor) Dinero
+}
+
+class NumeroDeSerie {
+  <<Value Object>>
+  -String valor
+  +Equals(otro) bool
+}
+
+class Folio {
+  <<Value Object>>
+  -String valor
+}
+
+class Operador {
+  <<Value Object>>
+  -String usuarioId
+  -Rol rol
+  +EsSupervisor() bool
+}
+
+class EventoDeDominio {
+  <<Interface>>
+  +OcurridoEn() DateTime
+}
+
+class ApartadoCreado {
+  <<Domain Event>>
+  folio
+  fechaLimite
+}
+
+class ApartadoVencido {
+  <<Domain Event>>
+  folio
+  unidadId
+}
+
+class VentaCerrada {
+  <<Domain Event>>
+  folio
+  total
+}
+
+class DevolucionDerivadaASupervisor {
+  <<Domain Event>>
+  folio
+  incumplimientos
+}
+
+class DevolucionAceptada {
+  <<Domain Event>>
+  folio
+  unidadId
+  folioDeVenta
+}
+
+class DevolucionRechazada {
+  <<Domain Event>>
+  folio
+  motivo
+}
+
+class ReglaDeNegocioViolada {
+  <<Exception>>
+  +MotivoDeRechazo motivo
+  +String mensajeDeNegocio
+}
+
+class MotivoDeRechazo {
+  <<Enumeration>>
+  SinExistenciaDisponible
+  UnidadApartada
+  UnidadNoDisponible
+  UnidadEnOtraSucursal
+  AnticipoInsuficiente
+  MetodoDePagoNoAutorizado
+  SerieRequerida
+  SerieNoCoincide
+  SaldoInsuficiente
+  ApartadoVencido
+  ComprobanteNoValido
+  LineaNoPerteneceALaVenta
+  SoloSupervisorAutoriza
+  TransicionDeEstadoInvalida
+  ConflictoDeConcurrencia
+  NoEncontrado
+}
+
+class EstadoDeApartado {
+  <<Enumeration>>
+  Vigente
+  Convertido
+  Vencido
+  Cancelado
+}
+
+class EstadoDeUnidad {
+  <<Enumeration>>
+  Disponible
+  Apartada
+  Vendida
+  Devuelta
+  EnTransito
+}
+
+class EstadoDeDevolucion {
+  <<Enumeration>>
+  EnRevision
+  Aceptada
+  Rechazada
+}
+
+class MetodoDePago {
+  <<Enumeration>>
+  pendiente de catalogo oficial
+}
+
+class Rol {
+  <<Enumeration>>
+  Vendedor
+  Cajero
+  Supervisor
+  Almacen
+}
+
+class CategoriaDeProducto {
+  <<Enumeration>>
+  Computadoras
+  Celulares
+  Accesorios
+  Componentes
+}
+
+class IRepositorioDeApartados {
+  <<Repository>>
+  +Obtener(folio) Apartado
+  +Agregar(apartado) void
+  +Guardar(apartado) void
+}
+
+class IRepositorioDeUnidades {
+  <<Repository>>
+  +Obtener(unidadId) UnidadInventario
+  +ObtenerPorSerie(serie) UnidadInventario
+  +ObtenerUnidadDisponible(productoId, sucursal) UnidadInventario
+  +ObtenerUnidadParaVenta(productoId, sucursal, serieCapturada) UnidadInventario
+  +Guardar(unidad) void
+}
+
+class IRepositorioDeVentas {
+  <<Repository>>
+  +ObtenerPorFolio(folio) Venta
+  +Agregar(venta) void
+}
+
+class IRepositorioDeDevoluciones {
+  <<Repository>>
+  +Obtener(folio) Devolucion
+  +Agregar(devolucion) void
+  +Guardar(devolucion) void
+}
+
+class IRepositorioDePoliticas {
+  <<Repository>>
+  +ObtenerPoliticaVigente() PoliticaComercial
+}
+
+class IRepositorioDeProductos {
+  <<Repository>>
+  +Obtener(productoId) Producto
+}
+
+%% ---------- Herencia ----------
+RaizDeAgregado <|-- Apartado
+RaizDeAgregado <|-- UnidadInventario
+RaizDeAgregado <|-- Venta
+RaizDeAgregado <|-- Devolucion
+RaizDeAgregado <|-- PoliticaComercial
+RaizDeAgregado <|-- Producto
+
+%% ---------- Composicion dentro de cada aggregate ----------
+Apartado *-- PagoRecibido : anticipo
+Apartado *-- VigenciaDeApartado
+Venta "1" *-- "1..*" LineaDeVenta
+Venta "1" *-- "1..*" PagoRecibido
+UnidadInventario *-- NumeroDeSerie
+Devolucion *-- MotivoDeDevolucion
+Devolucion *-- DictamenDeDevolucion
+Devolucion *-- DecisionDeSupervisor : opcional
+PoliticaComercial *-- CriterioDeDevolucion
+CriterioDeDevolucion o-- "1..*" ReglaDeDevolucion
+DictamenDeDevolucion *-- "1..*" ResultadoDeRegla
+DecisionDeSupervisor --> Operador
+Venta --> Operador : cajero
+
+%% ---------- Politicas (Strategy) ----------
+ReglaDeComprobanteVigente ..|> ReglaDeDevolucion
+ReglaDePlazoPorCategoria ..|> ReglaDeDevolucion
+
+%% ---------- Referencias entre aggregates (solo por identidad) ----------
+Apartado ..> UnidadInventario : reserva por UnidadId
+Venta ..> UnidadInventario : vende por UnidadId
+Venta ..> Apartado : origen opcional
+Devolucion ..> Venta : devuelve linea de
+LineaDeVenta ..> Producto : ProductoId
+
+%% ---------- Servicio de dominio ----------
+ConversionDeApartado ..> Apartado
+ConversionDeApartado ..> UnidadInventario
+ConversionDeApartado ..> Venta : crea
+ConversionDeApartado ..> ResultadoDeConversion
+
+%% ---------- Eventos ----------
+ApartadoCreado ..|> EventoDeDominio
+ApartadoVencido ..|> EventoDeDominio
+VentaCerrada ..|> EventoDeDominio
+DevolucionDerivadaASupervisor ..|> EventoDeDominio
+DevolucionAceptada ..|> EventoDeDominio
+DevolucionRechazada ..|> EventoDeDominio
+Apartado ..> ApartadoCreado : emite
+Apartado ..> ApartadoVencido : emite
+Venta ..> VentaCerrada : emite
+Devolucion ..> DevolucionDerivadaASupervisor : emite
+Devolucion ..> DevolucionAceptada : emite
+Devolucion ..> DevolucionRechazada : emite
+
+%% ---------- Errores de negocio ----------
+ReglaDeNegocioViolada --> MotivoDeRechazo
+
+%% ---------- Repositorios (interfaces del dominio) ----------
+IRepositorioDeApartados ..> Apartado
+IRepositorioDeUnidades ..> UnidadInventario
+IRepositorioDeVentas ..> Venta
+IRepositorioDeDevoluciones ..> Devolucion
+IRepositorioDePoliticas ..> PoliticaComercial
+IRepositorioDeProductos ..> Producto
+
+%% ---------- Estilos por tipo (paleta propia del documento) ----------
+classDef raiz fill:#F3E7D3,stroke:#6B4423,stroke-width:2px,color:#1E1E1E
+classDef entidad fill:#F8F1E4,stroke:#6B4423,color:#1E1E1E
+classDef vo fill:#FFFFFF,stroke:#6E6E6E,color:#1E1E1E
+classDef evento fill:#EBDADD,stroke:#7A2E3F,color:#1E1E1E
+classDef servicio fill:#DDE6DD,stroke:#2E4A3A,color:#1E1E1E
+classDef politica fill:#ECE9DC,stroke:#5A5532,color:#1E1E1E
+classDef repo fill:#F8F1E4,stroke:#6B4423,stroke-dasharray:4 3,color:#1E1E1E
+
+cssClass "RaizDeAgregado,Apartado,UnidadInventario,Venta,Devolucion,PoliticaComercial,Producto" raiz
+cssClass "LineaDeVenta" entidad
+cssClass "Dinero,NumeroDeSerie,Folio,Operador,PagoRecibido,VigenciaDeApartado,MotivoDeDevolucion,DictamenDeDevolucion,DecisionDeSupervisor,ResultadoDeRegla,ResultadoDeConversion,EstadoDeApartado,EstadoDeUnidad,EstadoDeDevolucion,MetodoDePago,Rol,CategoriaDeProducto,MotivoDeRechazo,ReglaDeNegocioViolada" vo
+cssClass "EventoDeDominio,ApartadoCreado,ApartadoVencido,VentaCerrada,DevolucionDerivadaASupervisor,DevolucionAceptada,DevolucionRechazada" evento
+cssClass "ConversionDeApartado" servicio
+cssClass "CriterioDeDevolucion,ReglaDeDevolucion,ReglaDeComprobanteVigente,ReglaDePlazoPorCategoria" politica
+cssClass "IRepositorioDeApartados,IRepositorioDeUnidades,IRepositorioDeVentas,IRepositorioDeDevoluciones,IRepositorioDePoliticas,IRepositorioDeProductos" repo
